@@ -1,136 +1,169 @@
-Objetivo
+# Battery SOC
 
-Como sistema embarcado IoT, quero interpretar o estado energético da bateria de forma inteligente e desacoplada do hardware para aumentar a confiabilidade da medição, proteger a bateria contra descarga profunda e permitir reutilização da solução entre ESP-IDF e Arduino.
+Biblioteca C++11 portavel para interpretar o estado energetico de uma bateria a partir de leituras externas de tensao e corrente, como as fornecidas por um INA226.
 
-Descrição detalhada (o que deve ser feito?)
+O nucleo nao depende de INA226, ESP-IDF, Arduino, I2C ou qualquer HAL. O firmware principal fica responsavel por ler o hardware e chamar:
 
-Desenvolver uma biblioteca em C/C++ responsável pela interpretação energética da bateria baseada nas leituras de tensão e corrente provenientes do INA226.
+```cpp
+soc.update(voltage, current, delta_time_seconds);
+```
 
-A biblioteca deverá ser desacoplada:
+A biblioteca retorna percentual de SOC, estado energetico e recomendacoes para cutoff ou baixo consumo.
 
-do driver INA226
+## Recursos
 
-do ESP-IDF
+- SOC por integracao de corrente, em modelo simplificado de Coulomb Counter.
+- Correcao gradual por tensao apenas quando a bateria esta em repouso ou baixa carga.
+- Filtro IIR para tensao, reduzindo impacto de quedas transitorias causadas por radio, Wi-Fi, buzzer ou cargas de pico.
+- Debounce temporal para estado critico e recomendacao de cutoff.
+- Histerese de recuperacao apos estado critico.
+- Estados minimos: `NORMAL`, `LOW`, `CRITICAL`, `CHARGING` e `DISCHARGING`.
+- Configuracao do sentido da corrente, porque projetos com INA226 podem adotar convencoes diferentes.
 
-do Arduino
+## Estrutura
 
-de qualquer HAL específica
+```text
+include/BatterySoc.h      API publica
+src/BatterySoc.cpp        Implementacao portavel
+examples/basic_usage.cpp  Exemplo minimo
+tests/test_battery_soc.cpp Testes sem framework externo
+CMakeLists.txt            Build opcional por CMake
+```
 
-Seu objetivo será centralizar toda a lógica de:
+## API basica
 
-cálculo de SOC (State of Charge)
+```cpp
+#include "BatterySoc.h"
 
-filtragem energética
+battery_soc::BatterySocConfig config;
+config.capacityAh = 2.2f;
+config.initialSocPercent = 80.0f;
+config.currentDirection = battery_soc::CurrentDirection::POSITIVE_DISCHARGES;
 
-histerese
+battery_soc::BatterySoc soc(config);
 
-debounce temporal
+auto snapshot = soc.update(3.82f, 0.18f, 1.0f);
 
-estados energéticos
+float percentage = soc.getPercentage();
+battery_soc::EnergyState state = soc.getState();
+bool cutoff = soc.getCutOff();
+```
 
-recomendação de cutoff
+## Convencao de corrente
 
-A solução deverá utilizar:
+A integracao usa uma corrente interna assinada:
 
-integração de corrente (Coulomb Counter simplificado)
+- corrente positiva interna carrega a bateria;
+- corrente negativa interna descarrega a bateria.
 
-correção gradual por tensão estabilizada
+Como a polaridade medida depende do hardware e do shunt, a configuracao aceita:
 
-proteção contra oscilações transitórias de carga
+```cpp
+config.currentDirection = battery_soc::CurrentDirection::POSITIVE_DISCHARGES;
+```
 
-A biblioteca não deverá executar ações de hardware diretamente, apenas recomendar estados e ações ao firmware principal.
+Use `POSITIVE_DISCHARGES` quando a leitura positiva representa consumo da bateria. Use `POSITIVE_CHARGES` quando a leitura positiva representa carga entrando na bateria.
 
-Exemplo:
+## Principais parametros
 
-recomendar cutoff
+```cpp
+config.capacityAh = 2.0f;
+config.voltageEmpty = 3.20f;
+config.voltageLow = 3.45f;
+config.voltageCritical = 3.30f;
+config.voltageFull = 4.20f;
 
-recomendar estado crítico
+config.lowSocPercent = 25.0f;
+config.criticalSocPercent = 10.0f;
 
-recomendar modo de baixo consumo
+config.restCurrentThresholdA = 0.05f;
+config.voltageFilterAlpha = 0.15f;
+config.stableVoltageTimeSeconds = 30.0f;
+config.voltageCorrectionGainPerSecond = 0.002f;
 
-A lógica deverá funcionar igualmente em:
+config.criticalDebounceSeconds = 10.0f;
+config.cutoffDelaySeconds = 60.0f;
+config.recoveryVoltageHysteresis = 0.08f;
+config.recoverySocHysteresisPercent = 5.0f;
+```
 
-ESP-IDF
+## Comportamento
 
-Arduino
+1. A cada `update`, a corrente e integrada ao longo de `delta_time_seconds`.
+2. A tensao e filtrada por IIR usando `voltageFilterAlpha`.
+3. Se a bateria estiver em repouso e a tensao permanecer estavel por `stableVoltageTimeSeconds`, o SOC e corrigido gradualmente para o SOC estimado pela tensao.
+4. O estado `CRITICAL` so e travado apos `criticalDebounceSeconds` em condicao critica.
+5. `getCutOff()` so retorna `true` quando a condicao critica permanece por `cutoffDelaySeconds`.
+6. A recuperacao de `CRITICAL` exige margem de histerese em tensao e SOC durante `recoveryDebounceSeconds`.
 
-permitindo reaproveitamento entre projetos.
+## Build e testes
 
-Requisitos / Critérios de Aceite
+Com CMake:
 
-Critérios funcionais
+```bash
+cmake -S . -B build -G "MinGW Makefiles"
+cmake --build build
+ctest --test-dir build
+```
 
-SOC baseado em corrente integrada
+Compilacao direta:
 
-Dado que o sistema esteja operando normalmente, quando houver consumo de corrente ao longo do tempo, então o SOC deverá ser atualizado através da integração da corrente medida.
+```bash
+g++ -std=c++11 -I include src/BatterySoc.cpp tests/test_battery_soc.cpp -o build/battery_soc_tests.exe
+build/battery_soc_tests.exe
+```
 
-Correção gradual por tensão
+## Simulacao CSV para grafico
 
-Dado que o sistema esteja em baixa carga ou repouso, quando a tensão estabilizar, então o SOC deverá ser corrigido gradualmente utilizando a tensão da bateria.
+O teste `battery_soc_profile_simulation` simula uma bateria de 1800 mAh, 3.7 V nominal e 4.1 V como 100% de carga. O consumo continuo usado no perfil e 96.59 mA, com acionamento de buzzer a cada 30 minutos. Cada evento de buzzer dura 10, 20 ou 30 segundos em ciclo, adicionando 120 mA ao consumo base.
 
-Filtragem de oscilações transitórias
+Execute:
 
-Dado que ocorram quedas momentâneas de tensão causadas por buzzer, rádio ou Wi-Fi, quando essas oscilações forem transitórias, então o sistema não deverá interpretar imediatamente como bateria crítica.
+```bash
+cmake --build build-mingw
+build-mingw/battery_soc_profile_simulation.exe
+```
 
-Estados energéticos
+Ou via CTest:
 
-Dado que a bateria esteja operando em diferentes níveis energéticos, então a biblioteca deverá informar estados mínimos:
+```bash
+ctest --test-dir build-mingw -R battery_soc_profile_simulation
+```
 
-NORMAL
+O arquivo gerado fica no diretorio de execucao com o nome:
 
-LOW
+```text
+battery_soc_1800mah_profile.csv
+```
 
-CRITICAL
+Colunas do CSV:
 
-CHARGING
+```text
+time_s,voltage_v,soc_percent,current_ma,state_code,state,cutoff
+```
 
-DISCHARGING
+Para um unico grafico com eixo X em tempo, use:
 
-Recomendação de cutoff
+- `voltage_v`: tensao em V.
+- `soc_percent`: percentual de SOC.
+- `current_ma`: corrente em mA.
+- `state_code`: estado numerico para plotagem (`0=NORMAL`, `1=LOW`, `2=CRITICAL`, `3=CHARGING`, `4=DISCHARGING`).
+- `cutoff`: recomendacao de cutoff (`0=false`, `1=true`).
 
-Dado que a bateria permaneça abaixo do limite crítico por período contínuo configurado, então a biblioteca deverá retornar recomendação de cutoff ao firmware.
+## Integracao com ESP-IDF ou Arduino
 
-Histerese de recuperação
+O firmware deve apenas coletar as leituras e passar os valores para a biblioteca:
 
-Dado que o sistema entre em estado crítico, quando a tensão retornar para faixa segura, então a recuperação deverá ocorrer apenas após margem configurada de histerese.
+```cpp
+float voltage = ina226_read_voltage();
+float current = ina226_read_current();
+float dt = seconds_since_last_sample();
 
-Desacoplamento de hardware
+auto snapshot = soc.update(voltage, current, dt);
 
-Dado que a biblioteca seja utilizada em ESP-IDF ou Arduino, então nenhuma dependência direta de hardware, I2C ou SDK específico deverá existir no núcleo SOC.
+if (snapshot.cutoffRecommended) {
+    // Firmware decide como desligar cargas, salvar estado ou entrar em protecao.
+}
+```
 
-Interface padronizada
-
-Dado que o firmware envie:
-
-tensão
-
-corrente
-
-delta de tempo
-
-quando a biblioteca processar os dados, então ela deverá retornar:
-
-percentual de SOC
-
-estado energético
-
-recomendação de cutoff
-
-DEFINED to READY
-
-Descrição geral (COMO deve ser feito?)
-
-API esperada
-
-Exemplo:
-
-soc.update(
-    voltage,
-    current,
-    delta_time_seconds
-);
-
-soc.getPercentage();
-soc.getState();
-soc.getCutOff();
-
+A biblioteca nao executa nenhuma acao de hardware diretamente.
