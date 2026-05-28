@@ -17,7 +17,7 @@ A biblioteca retorna percentual de SOC, estado energetico e recomendacoes para c
 - Filtro IIR para tensao, reduzindo impacto de quedas transitorias causadas por radio, Wi-Fi, buzzer ou cargas de pico.
 - Debounce temporal para estado critico e recomendacao de cutoff.
 - Histerese de recuperacao apos estado critico.
-- Estados minimos: `NORMAL`, `LOW`, `CRITICAL`, `CHARGING` e `DISCHARGING`.
+- Estados minimos: `NORMAL`, `LOWER`, `CRITICAL`, `CHARGING` e `DISCHARGING`.
 - Configuracao do sentido da corrente, porque projetos com INA226 podem adotar convencoes diferentes.
 
 ## Estrutura
@@ -147,7 +147,7 @@ Para um unico grafico com eixo X em tempo, use:
 - `voltage_v`: tensao em V.
 - `soc_percent`: percentual de SOC.
 - `current_ma`: corrente em mA.
-- `state_code`: estado numerico para plotagem (`0=NORMAL`, `1=LOW`, `2=CRITICAL`, `3=CHARGING`, `4=DISCHARGING`).
+- `state_code`: estado numerico para plotagem (`0=NORMAL`, `1=LOWER`, `2=CRITICAL`, `3=CHARGING`, `4=DISCHARGING`).
 - `cutoff`: recomendacao de cutoff (`0=false`, `1=true`).
 
 ## Integracao com ESP-IDF ou Arduino

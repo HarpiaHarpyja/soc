@@ -21,7 +21,7 @@ int stateCode(battery_soc::EnergyState state)
     switch (state) {
     case battery_soc::EnergyState::NORMAL:
         return 0;
-    case battery_soc::EnergyState::LOW:
+    case battery_soc::EnergyState::LOWER:
         return 1;
     case battery_soc::EnergyState::CRITICAL:
         return 2;
@@ -138,7 +138,7 @@ int main()
         actualRemainingAh = clamp(actualRemainingAh, 0.0f, batteryCapacityAh);
 
         sawBuzzer = sawBuzzer || buzzerActive;
-        sawLow = sawLow || snapshot.state == battery_soc::EnergyState::LOW;
+        sawLow = sawLow || snapshot.state == battery_soc::EnergyState::LOWER;
         sawCritical = sawCritical || snapshot.state == battery_soc::EnergyState::CRITICAL;
         sawCutoff = sawCutoff || snapshot.cutoffRecommended;
         lastSoc = snapshot.socPercent;
@@ -151,7 +151,7 @@ int main()
     csv.close();
 
     require(sawBuzzer, "simulation must include buzzer current bursts");
-    require(sawLow, "simulation must reach LOW state");
+    require(sawLow, "simulation must reach LOWER state");
     require(sawCritical, "simulation must reach CRITICAL state");
     require(sawCutoff, "simulation must recommend cutoff");
     require(lastSoc < 15.0f, "simulation must discharge battery close to critical SOC");

@@ -7,7 +7,7 @@ namespace battery_soc {
 
 enum class EnergyState {
     NORMAL,
-    LOW,
+    LOWER,
     CRITICAL,
     CHARGING,
     DISCHARGING
