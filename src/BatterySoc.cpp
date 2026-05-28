@@ -56,7 +56,7 @@ BatterySocSnapshot BatterySoc::update(float voltage, float currentA, float delta
 
     snapshot_.charging = charging;
     snapshot_.discharging = discharging;
-    snapshot_.lowPowerRecommended = snapshot_.state == EnergyState::LOW || snapshot_.state == EnergyState::CRITICAL;
+    snapshot_.lowPowerRecommended = snapshot_.state == EnergyState::LOWER || snapshot_.state == EnergyState::CRITICAL;
 
     return snapshot_;
 }
@@ -218,7 +218,7 @@ void BatterySoc::updateState(bool charging, bool discharging)
     } else if (charging) {
         snapshot_.state = EnergyState::CHARGING;
     } else if (snapshot_.socPercent <= config_.lowSocPercent || snapshot_.filteredVoltage <= config_.voltageLow) {
-        snapshot_.state = EnergyState::LOW;
+        snapshot_.state = EnergyState::LOWER;
     } else if (discharging) {
         snapshot_.state = EnergyState::DISCHARGING;
     } else {
@@ -231,8 +231,8 @@ const char* toString(EnergyState state)
     switch (state) {
     case EnergyState::NORMAL:
         return "NORMAL";
-    case EnergyState::LOW:
-        return "LOW";
+    case EnergyState::LOWER:
+        return "LOWER";
     case EnergyState::CRITICAL:
         return "CRITICAL";
     case EnergyState::CHARGING:
